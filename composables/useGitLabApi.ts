@@ -51,7 +51,7 @@ export const useGitLabApi = () => {
     const headers = getHeaders();
     if (!baseURL || !headers['PRIVATE-TOKEN']) return Promise.resolve([]);
 
-    return ofetch(`/projects/${projectId}/issues?per_page=100`, { baseURL, headers });
+    return ofetch(`/projects/${projectId}/issues?per_page=100&with_labels_details=true`, { baseURL, headers });
   };
 
   const updateIssueLabels = (projectId, issueIid, labels) => {

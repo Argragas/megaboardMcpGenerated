@@ -89,9 +89,19 @@ const fetchData = async (isManualRefresh = false) => {
     projects.value = fetchedProjects;
     assignProjectColors();
 
-    if (fetchedProjects.length > 0 && boardColumns.value.length === 0) {
+    if (fetchedProjects.length > 0) {
       const lists = await getProjectBoardLists(fetchedProjects[0].id);
-      boardColumns.value = lists.sort((a, b) => a.position - b.position);
+      if (lists && lists.length > 0) {
+        boardColumns.value = lists.sort((a, b) => a.position - b.position);
+      } else {
+        // Fallback to default columns if no lists are found
+        console.warn("No board lists found for project. Falling back to default columns.");
+        boardColumns.value = [
+          { label: { name: 'To Do', color: '#428BCA' }, position: 1 },
+          { label: { name: 'Doing', color: '#F0AD4E' }, position: 2 },
+          { label: { name: 'Done', color: '#5CB85C' }, position: 3 },
+        ];
+      }
     }
 
     const issuePromises = fetchedProjects.map(async (project) => {

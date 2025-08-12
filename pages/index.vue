@@ -1,47 +1,75 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 
-const { getProjects, getProjectIssues, updateIssueLabels } = useGitLabApi();
+const { getProjects, getProjectIssues, updateIssueLabels, getProjectBoardLists } = useGitLabApi();
 const router = useRouter();
 
 const projects = ref([]);
 const issues = ref([]);
 const isLoading = ref(true);
 const selectedProjects = ref([]);
+const allLabels = ref([]);
+const selectedLabels = ref([]);
 
-// Define the columns for the board.
-const boardColumns = {
-  'To Do': 'To Do',
-  'Doing': 'Doing',
-  'Done': 'Done',
-};
+const boardColumns = ref([]);
 const boardData = ref({});
+
+const defaultProjectColors = [
+  '#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#34d399',
+  '#2dd4bf', '#22d3ee', '#38bdf8', '#60a5fa', '#818cf8', '#a78bfa',
+  '#c084fc', '#e879f9', '#f472b6', '#fb7185'
+];
+const projectColors = ref([]);
+const projectColorMap = ref({});
+
+const assignProjectColors = () => {
+  const newColorMap = {};
+  projects.value.forEach((project, index) => {
+    if (projectColors.value.length > 0) {
+      newColorMap[project.id] = projectColors.value[index % projectColors.value.length];
+    }
+  });
+  projectColorMap.value = newColorMap;
+};
+
+const getProjectColor = (projectId) => {
+  return projectColorMap.value[projectId] || '#cccccc'; // A default fallback color
+};
 
 const updateBoardData = () => {
   const newBoardData = {};
-  Object.keys(boardColumns).forEach(title => {
-    newBoardData[title] = [];
+  boardColumns.value.forEach(column => {
+    newBoardData[column.label.name] = [];
   });
 
   const filteredIssues = issues.value.filter(issue => {
-    return selectedProjects.value.length === 0 || selectedProjects.value.includes(issue.project_id);
+    const projectMatch = selectedProjects.value.length === 0 || selectedProjects.value.includes(issue.project_id);
+    if (!projectMatch) return false;
+
+    if (selectedLabels.value.length === 0) return true;
+
+    return issue.labels.some(label => selectedLabels.value.includes(label.name));
   });
+
+  const columnNames = boardColumns.value.map(c => c.label.name);
 
   filteredIssues.forEach(issue => {
     let placed = false;
-    for (const label of issue.labels) {
-      const columnName = Object.keys(boardColumns).find(key => boardColumns[key] === label.name);
-      if (columnName) {
-        newBoardData[columnName].push(issue);
-        placed = true;
-        break;
+    if (issue.labels) {
+      for (const label of issue.labels) {
+        if (columnNames.includes(label.name)) {
+          newBoardData[label.name].push(issue);
+          placed = true;
+          break;
+        }
       }
     }
-    if (!placed) {
-      if (newBoardData['To Do']) {
-        newBoardData['To Do'].push(issue);
+    if (!placed && boardColumns.value.length > 0) {
+      const firstColumnName = boardColumns.value[0].label.name;
+      if(newBoardData[firstColumnName]) {
+        newBoardData[firstColumnName].push(issue);
       }
     }
   });
@@ -49,19 +77,23 @@ const updateBoardData = () => {
   boardData.value = newBoardData;
 };
 
-onMounted(async () => {
-  if (!localStorage.getItem('gitlab-url') || !localStorage.getItem('gitlab-token')) {
-    router.push('/config');
-    return;
-  }
+const refreshInterval = ref(300000);
+let refreshTimer = null;
 
-  try {
+const fetchData = async (isManualRefresh = false) => {
+  if (!isManualRefresh) {
     isLoading.value = true;
+  }
+  try {
     const fetchedProjects = await getProjects();
     projects.value = fetchedProjects;
+    assignProjectColors();
 
-    let allIssues = [];
-    // Fetch issues in parallel for faster loading
+    if (fetchedProjects.length > 0 && boardColumns.value.length === 0) {
+      const lists = await getProjectBoardLists(fetchedProjects[0].id);
+      boardColumns.value = lists.sort((a, b) => a.position - b.position);
+    }
+
     const issuePromises = fetchedProjects.map(async (project) => {
       const projectIssues = await getProjectIssues(project.id);
       return projectIssues.map(issue => ({
@@ -71,18 +103,125 @@ onMounted(async () => {
     });
 
     const results = await Promise.all(issuePromises);
-    allIssues = results.flat();
-
+    const allIssues = results.flat();
     issues.value = allIssues;
-    updateBoardData(); // Initial population of the board
+
+    const uniqueLabels = {};
+    allIssues.forEach(issue => {
+      if (issue.labels) {
+        issue.labels.forEach(label => {
+          if (!uniqueLabels[label.name]) {
+            uniqueLabels[label.name] = label;
+          }
+        });
+      }
+    });
+    allLabels.value = Object.values(uniqueLabels).sort((a, b) => a.name.localeCompare(b.name));
+
+    updateBoardData();
   } catch (error) {
     console.error('Failed to fetch data from GitLab:', error);
   } finally {
-    isLoading.value = false;
+    if (!isManualRefresh) {
+      isLoading.value = false;
+    }
+  }
+};
+
+const setupAutoRefresh = () => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
+  }
+  if (refreshInterval.value > 0) {
+    refreshTimer = setInterval(() => fetchData(true), refreshInterval.value);
+  }
+};
+
+const manualRefresh = () => {
+  fetchData(true);
+  setupAutoRefresh();
+};
+
+onMounted(() => {
+  const savedInterval = localStorage.getItem('refresh-interval');
+  if (savedInterval) {
+    refreshInterval.value = parseInt(savedInterval, 10);
+  }
+
+  const savedColors = localStorage.getItem('project-colors');
+  if (savedColors) {
+    projectColors.value = JSON.parse(savedColors);
+  } else {
+    projectColors.value = [...defaultProjectColors];
+  }
+
+  if (!localStorage.getItem('gitlab-url') || !localStorage.getItem('gitlab-token')) {
+    router.push('/config');
+    return;
+  }
+
+  fetchData();
+  setupAutoRefresh();
+});
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer);
   }
 });
 
-watch([selectedProjects], updateBoardData, { deep: true });
+watch([selectedProjects, selectedLabels], updateBoardData, { deep: true });
+
+const toggleProjectSelection = (projectId) => {
+  const index = selectedProjects.value.indexOf(projectId);
+  if (index > -1) {
+    selectedProjects.value.splice(index, 1);
+  } else {
+    selectedProjects.value.push(projectId);
+  }
+};
+
+const isProjectSelected = (projectId) => {
+  return selectedProjects.value.includes(projectId);
+};
+
+const clearProjectFilter = () => {
+  selectedProjects.value = [];
+};
+
+const toggleLabelSelection = (labelName) => {
+  const index = selectedLabels.value.indexOf(labelName);
+  if (index > -1) {
+    selectedLabels.value.splice(index, 1);
+  } else {
+    selectedLabels.value.push(labelName);
+  }
+};
+
+const isLabelSelected = (labelName) => {
+  return selectedLabels.value.includes(labelName);
+};
+
+const clearLabelFilter = () => {
+  selectedLabels.value = [];
+};
+
+const getLabelButtonStyle = (label) => {
+  const selected = isLabelSelected(label.name);
+  if (selected) {
+    return {
+      backgroundColor: label.color,
+      color: getTextColor(label.color),
+      borderColor: label.color,
+    };
+  } else {
+    return {
+      backgroundColor: 'transparent',
+      color: label.color,
+      borderColor: label.color,
+    };
+  }
+};
 
 const getTextColor = (backgroundColor) => {
   if (!backgroundColor) return '#000000';
@@ -105,7 +244,7 @@ const onDragEnd = async (event) => {
   const { to, item } = event;
   const newColumnElement = to.closest('.board-column');
   const newColumnName = newColumnElement.dataset.columnName;
-  const newLabel = boardColumns[newColumnName];
+  const newLabel = newColumnName;
 
   if (!newLabel) {
     console.error('Could not determine new label for the column.');
@@ -120,23 +259,22 @@ const onDragEnd = async (event) => {
     return;
   }
 
-  // Prevent API call if the label is already present
   if (issue.labels.some(l => l.name === newLabel)) {
     return;
   }
 
-  const otherLabels = issue.labels.map(l => l.name).filter(label => !Object.values(boardColumns).includes(label));
+  const columnLabels = boardColumns.value.map(c => c.label.name);
+  const otherLabels = issue.labels.map(l => l.name).filter(label => !columnLabels.includes(label));
   const newLabels = [...otherLabels, newLabel];
 
   try {
     await updateIssueLabels(issue.project_id, issue.iid, newLabels);
-    // This is a bit of a hack to avoid re-fetching the issue.
-    // We are assuming the update was successful and we add the new label.
-    // A better approach would be to fetch the issue again.
-    issue.labels.push({ name: newLabel, color: '#000000' }); // We don't have the color here, so we default to black.
+    const oldColumnLabels = columnLabels;
+    issue.labels = issue.labels.filter(l => !oldColumnLabels.includes(l.name));
+    const newLabelColor = boardColumns.value.find(c => c.label.name === newLabel)?.label.color || '#000000';
+    issue.labels.push({ name: newLabel, color: newLabelColor });
   } catch (error) {
     console.error('Failed to update issue labels on GitLab:', error);
-    // Revert UI change on failure
     updateBoardData();
   }
 };
@@ -150,17 +288,47 @@ const onDragEnd = async (event) => {
     <div v-else>
       <!-- Filter Section -->
       <div class="p-4 mb-4 bg-white rounded-lg shadow-sm">
-        <h3 class="font-semibold text-gray-800 mb-3">Filter by Project</h3>
-        <div class="flex flex-wrap gap-x-6 gap-y-2">
-          <div v-for="project in projects" :key="project.id" class="flex items-center">
-            <input
-              :id="'project-' + project.id"
-              :value="project.id"
-              v-model="selectedProjects"
-              type="checkbox"
-              class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <label :for="'project-' + project.id" class="ml-2 text-sm text-gray-700">{{ project.name }}</label>
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-xl font-bold text-gray-800">Filters</h2>
+            <button @click="manualRefresh" class="p-2 rounded-full hover:bg-gray-200 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5" />
+                </svg>
+            </button>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="font-semibold text-gray-800">Filter by Project</h3>
+              <button @click="clearProjectFilter" v-if="selectedProjects.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="project in projects"
+                :key="project.id"
+                @click="toggleProjectSelection(project.id)"
+                :class="['px-3 py-1 rounded-full text-sm font-medium border', isProjectSelected(project.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-100']"
+              >
+                {{ project.name }}
+              </button>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between items-center mb-3">
+              <h3 class="font-semibold text-gray-800">Filter by Label</h3>
+              <button @click="clearLabelFilter" v-if="selectedLabels.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-for="label in allLabels"
+                :key="label.id"
+                @click="toggleLabelSelection(label.name)"
+                class="px-3 py-1 rounded-full text-sm font-medium border-2 transition-colors"
+                :style="getLabelButtonStyle(label)"
+              >
+                {{ label.name }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -198,7 +366,12 @@ const onDragEnd = async (event) => {
                 <div class="flex items-center justify-between mt-3 text-sm">
                   <span class="text-gray-500">#{{ issue.iid }}</span>
                   <div class="flex items-center">
-                    <span class="px-2 py-1 bg-gray-100 text-gray-700 rounded-full">{{ issue.project_name }}</span>
+                    <span
+                      :style="{ backgroundColor: getProjectColor(issue.project_id), color: getTextColor(getProjectColor(issue.project_id)) }"
+                      class="px-2 py-1 text-xs font-semibold rounded-full"
+                    >
+                      {{ issue.project_name }}
+                    </span>
                     <img
                       v-if="issue.assignees && issue.assignees.length > 0"
                       :src="issue.assignees[0].avatar_url"

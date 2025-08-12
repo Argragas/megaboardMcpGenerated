@@ -69,9 +69,27 @@ export const useGitLabApi = () => {
     });
   };
 
+  const getProjectBoardLists = async (projectId) => {
+    const baseURL = getBaseUrl();
+    const headers = getHeaders();
+    if (!baseURL || !headers['PRIVATE-TOKEN']) return Promise.resolve([]);
+
+    try {
+      const boards = await ofetch(`/projects/${projectId}/boards`, { baseURL, headers });
+      if (boards && boards.length > 0) {
+        const boardId = boards[0].id;
+        return await ofetch(`/projects/${projectId}/boards/${boardId}/lists`, { baseURL, headers });
+      }
+    } catch (error) {
+      console.error(`Failed to get board lists for project ${projectId}:`, error);
+    }
+    return [];
+  };
+
   return {
     getProjects,
     getProjectIssues,
     updateIssueLabels,
+    getProjectBoardLists,
   };
 };

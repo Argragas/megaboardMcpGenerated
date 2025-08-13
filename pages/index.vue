@@ -412,7 +412,9 @@ const onDragEnd = async (event) => {
             >
               <template #item="{ element: issue }">
                 <div :data-issue-id="issue.id" class="bg-white p-4 rounded-md shadow-sm border border-gray-200 hover:border-blue-500 cursor-move">
-                  <p class="font-medium text-gray-900">{{ issue.title }}</p>
+                  <a :href="issue.web_url" target="_blank" rel="noopener noreferrer" class="font-medium text-gray-900 hover:text-blue-600 hover:underline">
+                    {{ issue.title }}
+                  </a>
                   <div class="flex flex-wrap gap-2 mt-2">
                     <span
                       v-for="label in issue.labels"

@@ -103,7 +103,35 @@ const fetchData = async (isManualRefresh = false) => {
         });
 
         const uniqueColumns = Array.from(uniqueColumnsMap.values());
-        boardColumns.value = uniqueColumns.sort((a, b) => a.label.name.localeCompare(b.label.name));
+
+        const customOrderStr = localStorage.getItem('column-order') || '';
+        const customOrder = customOrderStr.split(',').map(s => s.trim()).filter(s => s);
+
+        if (customOrder.length > 0) {
+            uniqueColumns.sort((a, b) => {
+                const nameA = a.label.name;
+                const nameB = b.label.name;
+
+                const indexA = customOrder.indexOf(nameA);
+                const indexB = customOrder.indexOf(nameB);
+
+                if (indexA !== -1 && indexB !== -1) {
+                    return indexA - indexB;
+                }
+                if (indexA !== -1) {
+                    return -1;
+                }
+                if (indexB !== -1) {
+                    return 1;
+                }
+                return nameA.localeCompare(nameB);
+            });
+        } else {
+            // Default to alphabetical sort if no custom order is set
+            uniqueColumns.sort((a, b) => a.label.name.localeCompare(b.label.name));
+        }
+
+        boardColumns.value = uniqueColumns;
       } else {
         // Fallback to default columns if no lists are found
         console.warn("No board lists found for any project. Falling back to default columns.");

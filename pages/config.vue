@@ -5,7 +5,6 @@ const gitlabUrl = ref('');
 const gitlabToken = ref('');
 const projectColors = ref([]);
 const refreshIntervalMinutes = ref(5);
-const columnOrder = ref('');
 
 const defaultProjectColors = [
   '#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#34d399',
@@ -19,7 +18,6 @@ const saveConfig = () => {
     localStorage.setItem('gitlab-token', gitlabToken.value);
     localStorage.setItem('project-colors', JSON.stringify(projectColors.value));
     localStorage.setItem('refresh-interval', refreshIntervalMinutes.value * 60000);
-    localStorage.setItem('column-order', columnOrder.value);
     alert('Configuration saved!');
   } else {
     alert('Please fill in both fields.');
@@ -29,7 +27,6 @@ const saveConfig = () => {
 onMounted(() => {
   gitlabUrl.value = localStorage.getItem('gitlab-url') || '';
   gitlabToken.value = localStorage.getItem('gitlab-token') || '';
-  columnOrder.value = localStorage.getItem('column-order') || '';
 
   const savedColors = localStorage.getItem('project-colors');
   if (savedColors) {
@@ -95,18 +92,6 @@ const resetColors = () => {
                 class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring focus:border-blue-300"
             />
             <p class="text-xs text-gray-600 mt-1">Set to 0 to disable auto-refresh.</p>
-        </div>
-
-        <div class="mb-6">
-            <label for="columnOrder" class="block text-gray-700 font-bold mb-2">Custom Column Order</label>
-            <textarea
-                id="columnOrder"
-                v-model="columnOrder"
-                placeholder="To Do, Doing, In Review, Done"
-                class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring focus:border-blue-300"
-                rows="3"
-            ></textarea>
-            <p class="text-xs text-gray-600 mt-1">Enter column names separated by commas. Columns not listed here will appear at the end, sorted alphabetically.</p>
         </div>
 
         <div class="mb-6">

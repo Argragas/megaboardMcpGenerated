@@ -289,6 +289,11 @@ const getTextColor = (backgroundColor) => {
   return (L > 0.179) ? '#000000' : '#FFFFFF';
 };
 
+const onColumnDragEnd = () => {
+  const newOrder = boardColumns.value.map(column => column.label.name);
+  localStorage.setItem('column-order', newOrder.join(','));
+};
+
 const onDragEnd = async (event) => {
   const { to, item } = event;
   const newColumnElement = to.closest('.board-column');
@@ -383,57 +388,64 @@ const onDragEnd = async (event) => {
       </div>
 
       <!-- Board Section -->
-      <div class="flex gap-6 overflow-x-auto pb-4">
-        <div
-          v-for="(issuesInColumn, columnName) in boardData"
-          :key="columnName"
-          :data-column-name="columnName"
-          class="board-column bg-gray-200 rounded-lg w-80 flex-shrink-0">
-          <div class="p-4 border-b border-gray-300">
-            <h2 class="font-semibold text-lg text-gray-800">{{ columnName }} <span class="text-gray-500 font-normal">({{ issuesInColumn.length }})</span></h2>
-          </div>
-          <draggable
-            :list="issuesInColumn"
-            group="issues"
-            item-key="id"
-            class="p-4 space-y-4 min-h-[300px]"
-            @end="onDragEnd"
+      <draggable
+        :list="boardColumns"
+        group="columns"
+        item-key="label.name"
+        class="flex gap-6 overflow-x-auto pb-4"
+        @end="onColumnDragEnd"
+      >
+        <template #item="{ element: column }">
+          <div
+            :data-column-name="column.label.name"
+            class="board-column bg-gray-200 rounded-lg w-80 flex-shrink-0"
           >
-            <template #item="{ element: issue }">
-              <div :data-issue-id="issue.id" class="bg-white p-4 rounded-md shadow-sm border border-gray-200 hover:border-blue-500 cursor-move">
-                <p class="font-medium text-gray-900">{{ issue.title }}</p>
-                <div class="flex flex-wrap gap-2 mt-2">
-                  <span
-                    v-for="label in issue.labels"
-                    :key="label.id"
-                    :style="{ backgroundColor: label.color, color: getTextColor(label.color) }"
-                    class="px-2 py-1 text-xs font-semibold rounded-full"
-                  >
-                    {{ label.name }}
-                  </span>
-                </div>
-                <div class="flex items-center justify-between mt-3 text-sm">
-                  <span class="text-gray-500">#{{ issue.iid }}</span>
-                  <div class="flex items-center">
+            <div class="p-4 border-b border-gray-300">
+              <h2 class="font-semibold text-lg text-gray-800 cursor-move">{{ column.label.name }} <span class="text-gray-500 font-normal">({{ boardData[column.label.name] ? boardData[column.label.name].length : 0 }})</span></h2>
+            </div>
+            <draggable
+              :list="boardData[column.label.name]"
+              group="issues"
+              item-key="id"
+              class="p-4 space-y-4 min-h-[300px]"
+              @end="onDragEnd"
+            >
+              <template #item="{ element: issue }">
+                <div :data-issue-id="issue.id" class="bg-white p-4 rounded-md shadow-sm border border-gray-200 hover:border-blue-500 cursor-move">
+                  <p class="font-medium text-gray-900">{{ issue.title }}</p>
+                  <div class="flex flex-wrap gap-2 mt-2">
                     <span
-                      :style="{ backgroundColor: getProjectColor(issue.project_id), color: getTextColor(getProjectColor(issue.project_id)) }"
+                      v-for="label in issue.labels"
+                      :key="label.id"
+                      :style="{ backgroundColor: label.color, color: getTextColor(label.color) }"
                       class="px-2 py-1 text-xs font-semibold rounded-full"
                     >
-                      {{ issue.project_name }}
+                      {{ label.name }}
                     </span>
-                    <img
-                      v-if="issue.assignees && issue.assignees.length > 0"
-                      :src="issue.assignees[0].avatar_url"
-                      alt="Assignee Avatar"
-                      class="w-6 h-6 rounded-full ml-2"
-                    />
+                  </div>
+                  <div class="flex items-center justify-between mt-3 text-sm">
+                    <span class="text-gray-500">#{{ issue.iid }}</span>
+                    <div class="flex items-center">
+                      <span
+                        :style="{ backgroundColor: getProjectColor(issue.project_id), color: getTextColor(getProjectColor(issue.project_id)) }"
+                        class="px-2 py-1 text-xs font-semibold rounded-full"
+                      >
+                        {{ issue.project_name }}
+                      </span>
+                      <img
+                        v-if="issue.assignees && issue.assignees.length > 0"
+                        :src="issue.assignees[0].avatar_url"
+                        alt="Assignee Avatar"
+                        class="w-6 h-6 rounded-full ml-2"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </template>
-          </draggable>
-        </div>
-      </div>
+              </template>
+            </draggable>
+          </div>
+        </template>
+      </draggable>
     </div>
   </div>
 </template>

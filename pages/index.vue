@@ -336,8 +336,14 @@ const onDragEnd = async (event) => {
 
 <template>
   <div>
-    <div v-if="isLoading" class="flex justify-center items-center h-64">
-      <p class="text-lg text-gray-600">Loading your MegaBoard...</p>
+    <div v-if="isLoading" class="loading-container">
+      <div class="zord zord-red"></div>
+      <div class="zord zord-blue"></div>
+      <div class="zord zord-yellow"></div>
+      <div class="zord zord-black"></div>
+      <div class="zord zord-pink"></div>
+      <div class="megaboard-logo">MegaBoard</div>
+      <div class="loading-subtext">Assembling Issues...</div>
     </div>
     <div v-else>
       <!-- Filter Section -->
@@ -451,3 +457,102 @@ const onDragEnd = async (event) => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  background-color: #111827; /* bg-gray-900 */
+  position: relative;
+  overflow: hidden;
+}
+
+.zord {
+  position: absolute;
+  width: 50px;
+  height: 150px;
+  background-color: #ccc;
+  animation-duration: 2.5s;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+
+.zord-red    { background-color: #ef4444; animation-name: fly-red; }
+.zord-blue   { background-color: #3b82f6; animation-name: fly-blue; }
+.zord-yellow { background-color: #f59e0b; animation-name: fly-yellow; }
+.zord-black  { background-color: #1f2937; animation-name: fly-black; }
+.zord-pink   { background-color: #ec4899; animation-name: fly-pink; }
+
+@keyframes fly-red {
+  0% { top: -150px; left: 50%; transform: translateX(-50%); }
+  40% { top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(0deg); }
+  60% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(360deg) scale(0); opacity: 0; }
+}
+
+@keyframes fly-blue {
+  0% { left: -50px; top: 0; }
+  40% { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  60% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -50%) rotate(360deg) scale(0); opacity: 0; }
+}
+
+@keyframes fly-yellow {
+  0% { right: -50px; top: 0; }
+  40% { right: 50%; top: 50%; transform: translate(50%, -50%); }
+  60% { transform: translate(50%, -50%) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(50%, -50%) rotate(360deg) scale(0); opacity: 0; }
+}
+
+@keyframes fly-black {
+  0% { left: -50px; bottom: 0; }
+  40% { left: 50%; bottom: 50%; transform: translate(-50%, 50%); }
+  60% { transform: translate(-50%, 50%) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, 50%) rotate(360deg) scale(0); opacity: 0; }
+}
+
+@keyframes fly-pink {
+  0% { right: -50px; bottom: 0; }
+  40% { right: 50%; bottom: 50%; transform: translate(50%, 50%); }
+  60% { transform: translate(50%, 50%) rotate(0deg) scale(1); opacity: 1; }
+  100% { transform: translate(50%, 50%) rotate(360deg) scale(0); opacity: 0; }
+}
+
+.megaboard-logo {
+  font-size: 3rem;
+  font-weight: bold;
+  color: white;
+  opacity: 0;
+  transform: scale(0.5);
+  animation: logo-fade 2.5s infinite ease-in-out;
+  animation-delay: 1.5s;
+}
+
+@keyframes logo-fade {
+  0% { opacity: 0; transform: scale(0.8); }
+  25% { opacity: 1; transform: scale(1.2); }
+  50% { opacity: 1; transform: scale(1.2); }
+  75% { opacity: 0; transform: scale(0.8); }
+  100% { opacity: 0; }
+}
+
+.loading-subtext {
+  position: absolute;
+  bottom: 20%;
+  color: #9ca3af; /* text-gray-400 */
+  font-size: 1.125rem;
+  opacity: 0;
+  animation: subtext-fade 2.5s infinite ease-in-out;
+  animation-delay: 1.5s;
+}
+
+@keyframes subtext-fade {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  50% { opacity: 1; }
+  75% { opacity: 0; }
+  100% { opacity: 0; }
+}
+</style>

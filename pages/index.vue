@@ -90,12 +90,23 @@ const fetchData = async (isManualRefresh = false) => {
     assignProjectColors();
 
     if (fetchedProjects.length > 0) {
-      const lists = await getProjectBoardLists(fetchedProjects[0].id);
-      if (lists && lists.length > 0) {
-        boardColumns.value = lists.sort((a, b) => a.position - b.position);
+      const listPromises = fetchedProjects.map(p => getProjectBoardLists(p.id));
+      const results = await Promise.all(listPromises);
+      const allLists = results.flat();
+
+      if (allLists.length > 0) {
+        const uniqueColumnsMap = new Map();
+        allLists.forEach(list => {
+          if (list.label && !uniqueColumnsMap.has(list.label.name)) {
+            uniqueColumnsMap.set(list.label.name, list);
+          }
+        });
+
+        const uniqueColumns = Array.from(uniqueColumnsMap.values());
+        boardColumns.value = uniqueColumns.sort((a, b) => a.label.name.localeCompare(b.label.name));
       } else {
         // Fallback to default columns if no lists are found
-        console.warn("No board lists found for project. Falling back to default columns.");
+        console.warn("No board lists found for any project. Falling back to default columns.");
         boardColumns.value = [
           { label: { name: 'To Do', color: '#428BCA' }, position: 1 },
           { label: { name: 'Doing', color: '#F0AD4E' }, position: 2 },

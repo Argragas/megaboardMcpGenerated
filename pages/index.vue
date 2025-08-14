@@ -95,10 +95,17 @@ const updateBoardData = () => {
   const columnNames = boardColumns.value.map(c => c.label.name);
 
   filteredIssues.forEach(issue => {
+    if (issue.state === 'closed') {
+      if (newBoardData['Closed']) {
+        newBoardData['Closed'].push(issue);
+      }
+      return; // Skip to next issue
+    }
+
     let placed = false;
     if (issue.labels) {
       for (const label of issue.labels) {
-        if (columnNames.includes(label.name)) {
+        if (columnNames.includes(label.name) && label.name !== 'Closed') {
           newBoardData[label.name].push(issue);
           placed = true;
           break;
@@ -179,6 +186,10 @@ const fetchData = async (isManualRefresh = false) => {
           { label: { name: 'Doing', color: '#F0AD4E' }, position: 2 },
           { label: { name: 'Done', color: '#5CB85C' }, position: 3 },
         ];
+      }
+      // Always add a 'Closed' column if it doesn't exist
+      if (!boardColumns.value.some(c => c.label.name === 'Closed')) {
+        boardColumns.value.push({ label: { name: 'Closed', color: '#808080' } });
       }
     }
 
@@ -418,7 +429,7 @@ const onDragEnd = async (event) => {
 </script>
 
 <template>
-  <div>
+  <div class="h-screen flex flex-col">
     <div v-if="isLoading" class="loading-container">
       <svg width="120" height="120" viewBox="0 0 1000 963.197" class="gitlab-logo-animation">
         <g transform="matrix(5.2068817,0,0,5.2068817,-489.30756,-507.76085)">
@@ -430,10 +441,10 @@ const onDragEnd = async (event) => {
       </svg>
       <div class="loading-subtext">Loading MegaBoard...</div>
     </div>
-    <div v-else>
+    <div v-else class="flex flex-col flex-grow min-h-0 bg-gray-50">
       <!-- Filter Section -->
-      <div class="p-4 mb-4 flex items-center">
-        <div class="flex gap-2">
+      <div class="p-4 bg-white border-b border-gray-200">
+        <div class="flex items-center gap-2">
           <!-- Project Filter Dropdown -->
           <div class="relative" ref="projectFilterRef">
             <button @click="toggleProjectFilter" class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">

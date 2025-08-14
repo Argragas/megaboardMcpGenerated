@@ -423,6 +423,13 @@ const onDragEnd = async (event) => {
     issue.labels.push({ name: newLabel, color: newLabelColor });
   } catch (error) {
     console.error('Failed to update issue labels on GitLab:', error);
+    let errorMessage = `Failed to move issue to column "${newLabel}".`;
+    if (error.response && error.response.status === 400) {
+        errorMessage += `\n\nError: The label "${newLabel}" might not exist in the project "${issue.project_name}". Please ensure it is created in GitLab.`;
+    } else if (error.response && error.response._data && error.response._data.message) {
+        errorMessage += `\n\nGitLab API Error: ${error.response._data.message.error || error.response._data.message}`;
+    }
+    alert(errorMessage);
     updateBoardData();
   }
 };

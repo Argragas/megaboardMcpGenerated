@@ -532,7 +532,10 @@ const onDragEnd = async (event) => {
                   </div>
                   <div class="flex items-center justify-between mt-3 text-sm">
                     <span class="text-gray-500">#{{ issue.iid }}</span>
-                    <div class="flex items-center">
+                    <div class="flex items-center gap-2">
+                      <span v-if="issue.milestone" class="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-semibold">
+                        {{ issue.milestone.title }}
+                      </span>
                       <span
                         :style="{ backgroundColor: getProjectColor(issue.project_id), color: getTextColor(getProjectColor(issue.project_id)) }"
                         class="px-2 py-1 text-xs font-semibold rounded-full"
@@ -543,7 +546,7 @@ const onDragEnd = async (event) => {
                         v-if="issue.assignees && issue.assignees.length > 0"
                         :src="issue.assignees[0].avatar_url"
                         alt="Assignee Avatar"
-                        class="w-6 h-6 rounded-full ml-2"
+                        class="w-6 h-6 rounded-full"
                       />
                     </div>
                   </div>

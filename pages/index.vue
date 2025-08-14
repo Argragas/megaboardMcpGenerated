@@ -514,16 +514,16 @@ const onDragEnd = async (event) => {
         <template #item="{ element: column }">
           <div
             :data-column-name="column.label.name"
-            class="board-column bg-gray-200 rounded-lg w-80 flex-shrink-0"
+            class="board-column bg-gray-100 rounded-lg w-80 flex-shrink-0 flex flex-col"
           >
-            <div class="p-4 border-b border-gray-300">
+            <div class="p-4 border-b border-gray-300 flex-shrink-0">
               <h2 class="font-semibold text-lg text-gray-800 cursor-move">{{ column.label.name }} <span class="text-gray-500 font-normal">({{ boardData[column.label.name] ? boardData[column.label.name].length : 0 }})</span></h2>
             </div>
             <draggable
               :list="boardData[column.label.name]"
               group="issues"
               item-key="id"
-              class="p-4 space-y-4 min-h-[300px]"
+              class="p-4 space-y-4 overflow-y-auto flex-grow"
               @end="onDragEnd"
             >
               <template #item="{ element: issue }">

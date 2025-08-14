@@ -211,15 +211,45 @@ onMounted(() => {
 
   fetchData();
   setupAutoRefresh();
+  window.addEventListener('click', handleClickOutside);
 });
 
 onUnmounted(() => {
   if (refreshTimer) {
     clearInterval(refreshTimer);
   }
+  window.removeEventListener('click', handleClickOutside);
 });
 
 watch([selectedProjects, selectedLabels], updateBoardData, { deep: true });
+
+const showProjectFilter = ref(false);
+const showLabelFilter = ref(false);
+const projectFilterRef = ref(null);
+const labelFilterRef = ref(null);
+
+const toggleProjectFilter = () => {
+  showProjectFilter.value = !showProjectFilter.value;
+  if (showProjectFilter.value) {
+    showLabelFilter.value = false;
+  }
+};
+
+const toggleLabelFilter = () => {
+  showLabelFilter.value = !showLabelFilter.value;
+  if (showLabelFilter.value) {
+    showProjectFilter.value = false;
+  }
+};
+
+const handleClickOutside = (event) => {
+  if (projectFilterRef.value && !projectFilterRef.value.contains(event.target)) {
+    showProjectFilter.value = false;
+  }
+  if (labelFilterRef.value && !labelFilterRef.value.contains(event.target)) {
+    showLabelFilter.value = false;
+  }
+};
 
 const toggleProjectSelection = (projectId) => {
   const index = selectedProjects.value.indexOf(projectId);
@@ -337,60 +367,71 @@ const onDragEnd = async (event) => {
 <template>
   <div>
     <div v-if="isLoading" class="loading-container">
-      <div class="zord zord-red"></div>
-      <div class="zord zord-blue"></div>
-      <div class="zord zord-yellow"></div>
-      <div class="zord zord-black"></div>
-      <div class="zord zord-pink"></div>
-      <div class="megaboard-logo">MegaBoard</div>
-      <div class="loading-subtext">Assembling Issues...</div>
+      <svg width="120" height="120" viewBox="0 0 1000 963.197" class="gitlab-logo-animation">
+        <g transform="matrix(5.2068817,0,0,5.2068817,-489.30756,-507.76085)">
+          <path fill="#e24329" d="m 282.83,170.73 -0.27,-0.69 -26.14,-68.22 a 6.81,6.81 0 0 0 -2.69,-3.24 7,7 0 0 0 -8,0.43 7,7 0 0 0 -2.32,3.52 l -17.65,54 h -71.47 l -17.65,-54 a 6.86,6.86 0 0 0 -2.32,-3.53 7,7 0 0 0 -8,-0.43 6.87,6.87 0 0 0 -2.69,3.24 L 97.44,170 l -0.26,0.69 a 48.54,48.54 0 0 0 16.1,56.1 l 0.09,0.07 0.24,0.17 39.82,29.82 19.7,14.91 12,9.06 a 8.07,8.07 0 0 0 9.76,0 l 12,-9.06 19.7,-14.91 40.06,-30 0.1,-0.08 a 48.56,48.56 0 0 0 16.08,-56.04 z" />
+          <path fill="#fc6d26" d="m 282.83,170.73 -0.27,-0.69 a 88.3,88.3 0 0 0 -35.15,15.8 L 190,229.25 c 19.55,14.79 36.57,27.64 36.57,27.64 l 40.06,-30 0.1,-0.08 a 48.56,48.56 0 0 0 16.1,-56.08 z" />
+          <path fill="#fca326" d="m 153.43,256.89 19.7,14.91 12,9.06 a 8.07,8.07 0 0 0 9.76,0 l 12,-9.06 19.7,-14.91 c 0,0 -17.04,-12.89 -36.59,-27.64 -19.55,14.75 -36.57,27.64 -36.57,27.64 z" />
+          <path fill="#fc6d26" d="M 132.58,185.84 A 88.19,88.19 0 0 0 97.44,170 l -0.26,0.69 a 48.54,48.54 0 0 0 16.1,56.1 l 0.09,0.07 0.24,0.17 39.82,29.82 c 0,0 17,-12.85 36.57,-27.64 z" />
+        </g>
+      </svg>
+      <div class="loading-subtext">Loading MegaBoard...</div>
     </div>
     <div v-else>
       <!-- Filter Section -->
-      <div class="p-4 mb-4 bg-white rounded-lg shadow-sm">
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="text-xl font-bold text-gray-800">Filters</h2>
-            <button @click="manualRefresh" class="p-2 rounded-full hover:bg-gray-200 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 4l5 5M20 20l-5-5" />
-                </svg>
+      <div class="p-4 mb-4 flex justify-between items-center">
+        <div class="flex gap-2">
+          <!-- Project Filter Dropdown -->
+          <div class="relative" ref="projectFilterRef">
+            <button @click="toggleProjectFilter" class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+              Projects <span v-if="selectedProjects.length > 0" class="ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">{{ selectedProjects.length }}</span>
             </button>
-        </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div>
-            <div class="flex justify-between items-center mb-3">
-              <h3 class="font-semibold text-gray-800">Filter by Project</h3>
-              <button @click="clearProjectFilter" v-if="selectedProjects.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="project in projects"
-                :key="project.id"
-                @click="toggleProjectSelection(project.id)"
-                :class="['px-3 py-1 rounded-full text-sm font-medium border', isProjectSelected(project.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-100']"
-              >
-                {{ project.name }}
-              </button>
-            </div>
-          </div>
-          <div>
-            <div class="flex justify-between items-center mb-3">
-              <h3 class="font-semibold text-gray-800">Filter by Label</h3>
-              <button @click="clearLabelFilter" v-if="selectedLabels.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="label in allLabels"
-                :key="label.id"
-                @click="toggleLabelSelection(label.name)"
-                class="px-3 py-1 rounded-full text-sm font-medium border-2 transition-colors"
-                :style="getLabelButtonStyle(label)"
-              >
-                {{ label.name }}
-              </button>
+            <div v-if="showProjectFilter" class="absolute z-10 mt-2 w-72 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 p-4">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800">Filter by Project</h3>
+                <button @click="clearProjectFilter" v-if="selectedProjects.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="project in projects"
+                  :key="project.id"
+                  @click="toggleProjectSelection(project.id)"
+                  :class="['px-3 py-1 rounded-full text-sm font-medium border', isProjectSelected(project.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-100']"
+                >
+                  {{ project.name }}
+                </button>
+              </div>
             </div>
           </div>
+          <!-- Label Filter Dropdown -->
+          <div class="relative" ref="labelFilterRef">
+            <button @click="toggleLabelFilter" class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+              Labels <span v-if="selectedLabels.length > 0" class="ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">{{ selectedLabels.length }}</span>
+            </button>
+            <div v-if="showLabelFilter" class="absolute z-10 mt-2 w-96 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 p-4">
+              <div class="flex justify-between items-center mb-3">
+                <h3 class="font-semibold text-gray-800">Filter by Label</h3>
+                <button @click="clearLabelFilter" v-if="selectedLabels.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="label in allLabels"
+                  :key="label.id"
+                  @click="toggleLabelSelection(label.name)"
+                  class="px-3 py-1 rounded-full text-sm font-medium border-2 transition-colors"
+                  :style="getLabelButtonStyle(label)"
+                >
+                  {{ label.name }}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
+        <button @click="manualRefresh" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-11.666a8.25 8.25 0 00-11.667 0l-3.181 3.183" />
+            </svg>
+        </button>
       </div>
 
       <!-- Board Section -->
@@ -461,98 +502,35 @@ const onDragEnd = async (event) => {
 <style scoped>
 .loading-container {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background-color: #111827; /* bg-gray-900 */
+  background-color: #fff;
   position: relative;
   overflow: hidden;
 }
 
-.zord {
-  position: absolute;
-  width: 50px;
-  height: 150px;
-  background-color: #ccc;
-  animation-duration: 2.5s;
-  animation-iteration-count: infinite;
-  animation-timing-function: ease-in-out;
+.gitlab-logo-animation {
+  animation: gitlab-pulse 2s infinite ease-in-out;
 }
 
-.zord-red    { background-color: #ef4444; animation-name: fly-red; }
-.zord-blue   { background-color: #3b82f6; animation-name: fly-blue; }
-.zord-yellow { background-color: #f59e0b; animation-name: fly-yellow; }
-.zord-black  { background-color: #1f2937; animation-name: fly-black; }
-.zord-pink   { background-color: #ec4899; animation-name: fly-pink; }
-
-@keyframes fly-red {
-  0% { top: -150px; left: 50%; transform: translateX(-50%); }
-  40% { top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(0deg); }
-  60% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
-  100% { transform: translate(-50%, -50%) rotate(360deg) scale(0); opacity: 0; }
-}
-
-@keyframes fly-blue {
-  0% { left: -50px; top: 0; }
-  40% { left: 50%; top: 50%; transform: translate(-50%, -50%); }
-  60% { transform: translate(-50%, -50%) rotate(0deg) scale(1); opacity: 1; }
-  100% { transform: translate(-50%, -50%) rotate(360deg) scale(0); opacity: 0; }
-}
-
-@keyframes fly-yellow {
-  0% { right: -50px; top: 0; }
-  40% { right: 50%; top: 50%; transform: translate(50%, -50%); }
-  60% { transform: translate(50%, -50%) rotate(0deg) scale(1); opacity: 1; }
-  100% { transform: translate(50%, -50%) rotate(360deg) scale(0); opacity: 0; }
-}
-
-@keyframes fly-black {
-  0% { left: -50px; bottom: 0; }
-  40% { left: 50%; bottom: 50%; transform: translate(-50%, 50%); }
-  60% { transform: translate(-50%, 50%) rotate(0deg) scale(1); opacity: 1; }
-  100% { transform: translate(-50%, 50%) rotate(360deg) scale(0); opacity: 0; }
-}
-
-@keyframes fly-pink {
-  0% { right: -50px; bottom: 0; }
-  40% { right: 50%; bottom: 50%; transform: translate(50%, 50%); }
-  60% { transform: translate(50%, 50%) rotate(0deg) scale(1); opacity: 1; }
-  100% { transform: translate(50%, 50%) rotate(360deg) scale(0); opacity: 0; }
-}
-
-.megaboard-logo {
-  font-size: 3rem;
-  font-weight: bold;
-  color: white;
-  opacity: 0;
-  transform: scale(0.5);
-  animation: logo-fade 2.5s infinite ease-in-out;
-  animation-delay: 1.5s;
-}
-
-@keyframes logo-fade {
-  0% { opacity: 0; transform: scale(0.8); }
-  25% { opacity: 1; transform: scale(1.2); }
-  50% { opacity: 1; transform: scale(1.2); }
-  75% { opacity: 0; transform: scale(0.8); }
-  100% { opacity: 0; }
+@keyframes gitlab-pulse {
+  0% {
+    transform: scale(0.95);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(0.95);
+  }
 }
 
 .loading-subtext {
-  position: absolute;
-  bottom: 20%;
-  color: #9ca3af; /* text-gray-400 */
+  margin-top: 20px;
+  color: #4b5563; /* text-gray-600 */
   font-size: 1.125rem;
-  opacity: 0;
-  animation: subtext-fade 2.5s infinite ease-in-out;
-  animation-delay: 1.5s;
-}
-
-@keyframes subtext-fade {
-  0% { opacity: 0; }
-  25% { opacity: 1; }
-  50% { opacity: 1; }
-  75% { opacity: 0; }
-  100% { opacity: 0; }
+  font-weight: 500;
 }
 </style>

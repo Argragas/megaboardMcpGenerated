@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 
 const { getProjects, getProjectIssues, updateIssueLabels, getProjectBoardLists } = useGitLabApi();
-const router = useRouter();
 
 const projects = ref([]);
 const issues = ref([]);
@@ -23,6 +22,46 @@ const defaultProjectColors = [
 ];
 const projectColors = ref([]);
 const projectColorMap = ref({});
+
+// --- Configuration State ---
+const gitlabUrl = ref('');
+const gitlabToken = ref('');
+const refreshIntervalMinutes = ref(5);
+const issueTitleFontSize = ref(14); // Default font size
+
+// --- Configuration Functions ---
+const saveConfig = () => {
+  if (gitlabUrl.value && gitlabToken.value) {
+    localStorage.setItem('gitlab-url', gitlabUrl.value);
+    localStorage.setItem('gitlab-token', gitlabToken.value);
+    localStorage.setItem('project-colors', JSON.stringify(projectColors.value));
+    localStorage.setItem('refresh-interval', refreshIntervalMinutes.value * 60000);
+    localStorage.setItem('issue-title-font-size', issueTitleFontSize.value);
+
+    // Update the live values in the app
+    refreshInterval.value = refreshIntervalMinutes.value * 60000;
+
+    alert('Configuration saved!');
+    showConfigModal.value = false;
+    fetchData(); // Re-fetch data with new config
+  } else {
+    alert('Please fill in all required fields.');
+  }
+};
+
+const addColor = () => {
+  projectColors.value.push('#000000');
+};
+
+const removeColor = (index) => {
+  projectColors.value.splice(index, 1);
+};
+
+const resetColors = () => {
+  projectColors.value = [...defaultProjectColors];
+  localStorage.setItem('project-colors', JSON.stringify(projectColors.value));
+};
+
 
 const assignProjectColors = () => {
   const newColorMap = {};
@@ -192,25 +231,34 @@ const manualRefresh = () => {
 };
 
 onMounted(() => {
-  const savedInterval = localStorage.getItem('refresh-interval');
-  if (savedInterval) {
-    refreshInterval.value = parseInt(savedInterval, 10);
-  }
-
+  // Load config from localStorage
+  gitlabUrl.value = localStorage.getItem('gitlab-url') || '';
+  gitlabToken.value = localStorage.getItem('gitlab-token') || '';
   const savedColors = localStorage.getItem('project-colors');
   if (savedColors) {
     projectColors.value = JSON.parse(savedColors);
   } else {
     projectColors.value = [...defaultProjectColors];
   }
-
-  if (!localStorage.getItem('gitlab-url') || !localStorage.getItem('gitlab-token')) {
-    router.push('/config');
-    return;
+  const savedInterval = localStorage.getItem('refresh-interval');
+  if (savedInterval) {
+    refreshIntervalMinutes.value = parseInt(savedInterval, 10) / 60000;
+    refreshInterval.value = parseInt(savedInterval, 10);
+  }
+  const savedFontSize = localStorage.getItem('issue-title-font-size');
+  if (savedFontSize) {
+    issueTitleFontSize.value = parseInt(savedFontSize, 10);
   }
 
-  fetchData();
-  setupAutoRefresh();
+  // If config is missing, open the modal
+  if (!gitlabUrl.value || !gitlabToken.value) {
+    showConfigModal.value = true;
+  } else {
+    // Fetch data only if config is present
+    fetchData();
+    setupAutoRefresh();
+  }
+
   window.addEventListener('click', handleClickOutside);
 });
 
@@ -225,6 +273,7 @@ watch([selectedProjects, selectedLabels], updateBoardData, { deep: true });
 
 const showProjectFilter = ref(false);
 const showLabelFilter = ref(false);
+const showConfigModal = ref(false);
 const projectFilterRef = ref(null);
 const labelFilterRef = ref(null);
 
@@ -233,6 +282,10 @@ const toggleProjectFilter = () => {
   if (showProjectFilter.value) {
     showLabelFilter.value = false;
   }
+};
+
+const openConfigModal = () => {
+  showConfigModal.value = true;
 };
 
 const toggleLabelFilter = () => {
@@ -379,7 +432,7 @@ const onDragEnd = async (event) => {
     </div>
     <div v-else>
       <!-- Filter Section -->
-      <div class="p-4 mb-4 flex justify-between items-center">
+      <div class="p-4 mb-4 flex items-center">
         <div class="flex gap-2">
           <!-- Project Filter Dropdown -->
           <div class="relative" ref="projectFilterRef">
@@ -426,13 +479,18 @@ const onDragEnd = async (event) => {
               </div>
             </div>
           </div>
-        </div>
-        <button @click="manualRefresh" class="p-2 rounded-full hover:bg-gray-100 transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+          <button @click="manualRefresh" class="p-2 rounded-md hover:bg-gray-100 transition-colors border border-gray-300 shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-11.666a8.25 8.25 0 00-11.667 0l-3.181 3.183" />
             </svg>
-        </button>
-      </div>
+          </button>
+          <button @click="openConfigModal" class="p-2 rounded-md hover:bg-gray-100 transition-colors border border-gray-300 shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295.12-.618.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162zM9.594 18.94c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295.12-.618.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162zM14.406 11.06c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295-.12-.618-.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162zM4.594 11.06c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295-.12-.618-.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162z" />
++            </svg>
++          </button>
++        </div>
++      </div>
 
       <!-- Board Section -->
       <draggable
@@ -459,7 +517,7 @@ const onDragEnd = async (event) => {
             >
               <template #item="{ element: issue }">
                 <div :data-issue-id="issue.id" class="bg-white p-4 rounded-md shadow-sm border border-gray-200 hover:border-blue-500 cursor-move">
-                  <a :href="issue.web_url" target="_blank" rel="noopener noreferrer" class="font-medium text-gray-900 hover:text-blue-600 hover:underline">
+                  <a :href="issue.web_url" target="_blank" rel="noopener noreferrer" class="font-medium text-gray-900 hover:text-blue-600 hover:underline" :style="{ fontSize: `${issueTitleFontSize}px` }">
                     {{ issue.title }}
                   </a>
                   <div class="flex flex-wrap gap-2 mt-2">
@@ -495,6 +553,47 @@ const onDragEnd = async (event) => {
           </div>
         </template>
       </draggable>
+    </div>
+
+    <!-- Configuration Modal -->
+    <div v-if="showConfigModal" class="fixed inset-0 bg-black bg-opacity-60 z-40 flex justify-center items-center p-4">
+      <div class="bg-white p-8 rounded-lg shadow-2xl w-full max-w-2xl relative max-h-[90vh] overflow-y-auto" @click.stop>
+        <button @click="showConfigModal = false" class="absolute top-4 right-4 text-2xl text-gray-500 hover:text-gray-800">&times;</button>
+        <h1 class="text-2xl font-bold mb-6 text-center">Configuration</h1>
+        <form @submit.prevent="saveConfig">
+          <div class="mb-4">
+            <label for="gitlabUrl" class="block text-gray-700 font-bold mb-2">GitLab URL</label>
+            <input id="gitlabUrl" v-model="gitlabUrl" type="text" placeholder="https://gitlab.com" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring focus:border-blue-300"/>
+          </div>
+          <div class="mb-6">
+            <label for="gitlabToken" class="block text-gray-700 font-bold mb-2">Personal Access Token</label>
+            <input id="gitlabToken" v-model="gitlabToken" type="password" placeholder="your-token" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring focus:border-blue-300"/>
+          </div>
+          <div class="mb-6">
+              <label for="refreshInterval" class="block text-gray-700 font-bold mb-2">Auto-refresh Interval (minutes)</label>
+              <input id="refreshInterval" v-model.number="refreshIntervalMinutes" type="number" min="0" placeholder="5" class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring focus:border-blue-300"/>
+              <p class="text-xs text-gray-600 mt-1">Set to 0 to disable auto-refresh.</p>
+          </div>
+          <div class="mb-6">
+            <label for="fontSize" class="block text-gray-700 font-bold mb-2">Issue Title Font Size <span class="font-normal text-gray-600">({{ issueTitleFontSize }}px)</span></label>
+            <input id="fontSize" v-model.number="issueTitleFontSize" type="range" min="12" max="20" step="1" class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"/>
+          </div>
+          <div class="mb-6">
+            <h2 class="text-xl font-bold mb-4">Project Label Colors</h2>
+            <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-4">
+              <div v-for="(color, index) in projectColors" :key="index" class="relative group">
+                <input type="color" v-model="projectColors[index]" class="w-12 h-12 p-1 border rounded-full cursor-pointer"/>
+                <button @click.prevent="removeColor(index)" class="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">&times;</button>
+              </div>
+            </div>
+            <div class="mt-4 flex gap-2">
+              <button @click.prevent="addColor" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg">Add Color</button>
+              <button @click.prevent="resetColors" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded-lg">Reset to Default</button>
+            </div>
+          </div>
+          <button type="submit" class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg focus:outline-none focus:shadow-outline">Save Configuration</button>
+        </form>
+      </div>
     </div>
   </div>
 </template>

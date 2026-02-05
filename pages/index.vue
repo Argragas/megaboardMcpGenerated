@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import draggable from 'vuedraggable';
 
@@ -14,6 +14,7 @@ const selectedLabels = ref([]);
 
 const boardColumns = ref([]);
 const boardData = ref({});
+const hiddenColumns = ref([]);
 
 const defaultProjectColors = [
   '#f87171', '#fb923c', '#fbbf24', '#a3e635', '#4ade80', '#34d399',
@@ -77,6 +78,25 @@ const getProjectColor = (projectId) => {
   return projectColorMap.value[projectId] || '#cccccc'; // A default fallback color
 };
 
+const visibleColumns = computed(() => {
+  return boardColumns.value.filter(column => !hiddenColumns.value.includes(column.label.name));
+});
+
+const toggleColumnVisibility = (columnName) => {
+  const index = hiddenColumns.value.indexOf(columnName);
+  if (index > -1) {
+    hiddenColumns.value.splice(index, 1);
+  } else {
+    hiddenColumns.value.push(columnName);
+  }
+  localStorage.setItem('hidden-columns', JSON.stringify(hiddenColumns.value));
+  updateBoardData();
+};
+
+const isColumnVisible = (columnName) => {
+  return !hiddenColumns.value.includes(columnName);
+};
+
 const updateBoardData = () => {
   const newBoardData = {};
   boardColumns.value.forEach(column => {
@@ -99,7 +119,7 @@ const updateBoardData = () => {
       if (newBoardData['Closed']) {
         newBoardData['Closed'].push(issue);
       }
-      return; // Skip to next issue
+      return;
     }
 
     let placed = false;
@@ -242,7 +262,6 @@ const manualRefresh = () => {
 };
 
 onMounted(() => {
-  // Load config from localStorage
   gitlabUrl.value = localStorage.getItem('gitlab-url') || '';
   gitlabToken.value = localStorage.getItem('gitlab-token') || '';
   const savedColors = localStorage.getItem('project-colors');
@@ -260,12 +279,14 @@ onMounted(() => {
   if (savedFontSize) {
     issueTitleFontSize.value = parseInt(savedFontSize, 10);
   }
+  const savedHiddenColumns = localStorage.getItem('hidden-columns');
+  if (savedHiddenColumns) {
+    hiddenColumns.value = JSON.parse(savedHiddenColumns);
+  }
 
-  // If config is missing, open the modal
   if (!gitlabUrl.value || !gitlabToken.value) {
     showConfigModal.value = true;
   } else {
-    // Fetch data only if config is present
     fetchData();
     setupAutoRefresh();
   }
@@ -284,14 +305,17 @@ watch([selectedProjects, selectedLabels], updateBoardData, { deep: true });
 
 const showProjectFilter = ref(false);
 const showLabelFilter = ref(false);
+const showColumnFilter = ref(false);
 const showConfigModal = ref(false);
 const projectFilterRef = ref(null);
 const labelFilterRef = ref(null);
+const columnFilterRef = ref(null);
 
 const toggleProjectFilter = () => {
   showProjectFilter.value = !showProjectFilter.value;
   if (showProjectFilter.value) {
     showLabelFilter.value = false;
+    showColumnFilter.value = false;
   }
 };
 
@@ -303,6 +327,15 @@ const toggleLabelFilter = () => {
   showLabelFilter.value = !showLabelFilter.value;
   if (showLabelFilter.value) {
     showProjectFilter.value = false;
+    showColumnFilter.value = false;
+  }
+};
+
+const toggleColumnFilter = () => {
+  showColumnFilter.value = !showColumnFilter.value;
+  if (showColumnFilter.value) {
+    showProjectFilter.value = false;
+    showLabelFilter.value = false;
   }
 };
 
@@ -312,6 +345,9 @@ const handleClickOutside = (event) => {
   }
   if (labelFilterRef.value && !labelFilterRef.value.contains(event.target)) {
     showLabelFilter.value = false;
+  }
+  if (columnFilterRef.value && !columnFilterRef.value.contains(event.target)) {
+    showColumnFilter.value = false;
   }
 };
 
@@ -384,8 +420,17 @@ const getTextColor = (backgroundColor) => {
 };
 
 const onColumnDragEnd = () => {
-  const newOrder = boardColumns.value.map(column => column.label.name);
-  localStorage.setItem('column-order', newOrder.join(','));
+  const visibleColumnNames = visibleColumns.value.map(column => column.label.name);
+  const hiddenColumnNames = hiddenColumns.value;
+
+  const allColumnNames = [...visibleColumnNames, ...hiddenColumnNames];
+  localStorage.setItem('column-order', allColumnNames.join(','));
+
+  boardColumns.value.sort((a, b) => {
+    const indexA = allColumnNames.indexOf(a.label.name);
+    const indexB = allColumnNames.indexOf(b.label.name);
+    return indexA - indexB;
+  });
 };
 
 const onDragEnd = async (event) => {
@@ -449,131 +494,195 @@ const onDragEnd = async (event) => {
       <div class="loading-subtext">Loading MegaBoard...</div>
     </div>
     <div v-else class="flex flex-col flex-grow min-h-0 bg-gray-50">
-      <!-- Filter Section -->
-      <div class="p-4 bg-white border-b border-gray-200">
-        <div class="flex items-center gap-2">
-          <!-- Project Filter Dropdown -->
-          <div class="relative" ref="projectFilterRef">
-            <button @click="toggleProjectFilter" class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-              Projects <span v-if="selectedProjects.length > 0" class="ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">{{ selectedProjects.length }}</span>
-            </button>
-            <div v-if="showProjectFilter" class="absolute z-10 mt-2 w-72 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 p-4">
-              <div class="flex justify-between items-center mb-3">
-                <h3 class="font-semibold text-gray-800">Filter by Project</h3>
-                <button @click="clearProjectFilter" v-if="selectedProjects.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="project in projects"
-                  :key="project.id"
-                  @click="toggleProjectSelection(project.id)"
-                  :class="['px-3 py-1 rounded-full text-sm font-medium border', isProjectSelected(project.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-100']"
-                >
-                  {{ project.name }}
+      <!-- Enhanced Toolbar Section -->
+      <div class="bg-gradient-to-r from-white to-gray-50 border-b border-gray-200 shadow-sm">
+        <div class="px-6 py-4">
+          <div class="flex items-center justify-between flex-wrap gap-3">
+            <div class="flex items-center gap-3">
+              <!-- Project Filter Dropdown -->
+              <div class="relative" ref="projectFilterRef">
+                <button @click="toggleProjectFilter" class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                  </svg>
+                  Projects
+                  <span v-if="selectedProjects.length > 0" class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-500 text-white">{{ selectedProjects.length }}</span>
                 </button>
-              </div>
-            </div>
-          </div>
-          <!-- Label Filter Dropdown -->
-          <div class="relative" ref="labelFilterRef">
-            <button @click="toggleLabelFilter" class="px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-              Labels <span v-if="selectedLabels.length > 0" class="ml-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">{{ selectedLabels.length }}</span>
-            </button>
-            <div v-if="showLabelFilter" class="absolute z-10 mt-2 w-96 origin-top-left bg-white rounded-md shadow-lg ring-1 ring-black ring-opacity-5 p-4">
-              <div class="flex justify-between items-center mb-3">
-                <h3 class="font-semibold text-gray-800">Filter by Label</h3>
-                <button @click="clearLabelFilter" v-if="selectedLabels.length > 0" class="text-sm text-blue-600 hover:underline">Clear</button>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  v-for="label in allLabels"
-                  :key="label.id"
-                  @click="toggleLabelSelection(label.name)"
-                  class="px-3 py-1 rounded-full text-sm font-medium border-2 transition-colors"
-                  :style="getLabelButtonStyle(label)"
-                >
-                  {{ label.name }}
-                </button>
-              </div>
-            </div>
-          </div>
-          <button @click="manualRefresh" class="p-2 rounded-md hover:bg-gray-100 transition-colors border border-gray-300 shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-11.666a8.25 8.25 0 00-11.667 0l-3.181 3.183" />
-            </svg>
-          </button>
-          <button @click="openConfigModal" class="p-2 rounded-md hover:bg-gray-100 transition-colors border border-gray-300 shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295.12-.618.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162zM9.594 18.94c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295.12-.618.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162zM14.406 11.06c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295-.12-.618-.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162zM4.594 11.06c.09-.542.56-1.003 1.11-1.226l.043-.023c.295-.12.618-.18.947-.18s.652.06.947.18l.043.023c.549.223 1.02.684 1.11 1.226l.03.162c.043.26.064.525.064.792s-.02.532-.064.792l-.03.162c-.09.542-.56 1.004-1.11 1.226l-.043.023c-.295-.12-.618-.18-.947-.18s-.652-.06-.947-.18l-.043-.023c-.549-.223-1.02-.684-1.11-1.226l-.03-.162a4.506 4.506 0 01-.064-.792s.02-.532.064-.792l.03-.162z" />
-+            </svg>
-+          </button>
-+        </div>
-+      </div>
-
-      <!-- Board Section -->
-      <draggable
-        :list="boardColumns"
-        group="columns"
-        item-key="label.name"
-        class="flex gap-6 overflow-x-auto pb-4"
-        @end="onColumnDragEnd"
-      >
-        <template #item="{ element: column }">
-          <div
-            :data-column-name="column.label.name"
-            class="board-column bg-gray-100 rounded-lg w-80 flex-shrink-0 flex flex-col"
-          >
-            <div class="p-4 border-b border-gray-300 flex-shrink-0">
-              <h2 class="font-semibold text-lg text-gray-800 cursor-move">{{ column.label.name }} <span class="text-gray-500 font-normal">({{ boardData[column.label.name] ? boardData[column.label.name].length : 0 }})</span></h2>
-            </div>
-            <draggable
-              :list="boardData[column.label.name]"
-              group="issues"
-              item-key="id"
-              class="p-4 space-y-4 overflow-y-auto flex-grow"
-              @end="onDragEnd"
-            >
-              <template #item="{ element: issue }">
-                <div :data-issue-id="issue.id" class="bg-white p-4 rounded-md shadow-sm border border-gray-200 hover:border-blue-500 cursor-move">
-                  <a :href="issue.web_url" target="_blank" rel="noopener noreferrer" class="font-medium text-gray-900 hover:text-blue-600 hover:underline" :style="{ fontSize: `${issueTitleFontSize}px` }">
-                    {{ issue.title }}
-                  </a>
-                  <div class="flex flex-wrap gap-2 mt-2">
-                    <span
-                      v-for="label in issue.labels"
-                      :key="label.id"
-                      :style="{ backgroundColor: label.color, color: getTextColor(label.color) }"
-                      class="px-2 py-1 text-xs font-semibold rounded-full"
-                    >
-                      {{ label.name }}
-                    </span>
+                <div v-if="showProjectFilter" class="absolute z-20 mt-2 w-80 origin-top-left bg-white rounded-lg shadow-xl ring-1 ring-black ring-opacity-5 p-5 animate-fadeIn">
+                  <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-base font-bold text-gray-900">Filter by Project</h3>
+                    <button @click="clearProjectFilter" v-if="selectedProjects.length > 0" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">Clear All</button>
                   </div>
-                  <div class="flex items-center justify-between mt-3 text-sm">
-                    <span class="text-gray-500">#{{ issue.iid }}</span>
-                    <div class="flex items-center gap-2">
-                      <span v-if="issue.milestone" class="px-2 py-1 bg-gray-200 text-gray-800 rounded-full text-xs font-semibold">
-                        {{ issue.milestone.title }}
-                      </span>
-                      <span
-                        :style="{ backgroundColor: getProjectColor(issue.project_id), color: getTextColor(getProjectColor(issue.project_id)) }"
-                        class="px-2 py-1 text-xs font-semibold rounded-full"
-                      >
-                        {{ issue.project_name }}
-                      </span>
-                      <img
-                        v-if="issue.assignees && issue.assignees.length > 0"
-                        :src="issue.assignees[0].avatar_url"
-                        alt="Assignee Avatar"
-                        class="w-6 h-6 rounded-full"
-                      />
-                    </div>
+                  <div class="flex flex-wrap gap-2 max-h-64 overflow-y-auto">
+                    <button
+                      v-for="project in projects"
+                      :key="project.id"
+                      @click="toggleProjectSelection(project.id)"
+                      :class="['px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all', isProjectSelected(project.id) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50 hover:border-gray-400']"
+                    >
+                      {{ project.name }}
+                    </button>
                   </div>
                 </div>
-              </template>
-            </draggable>
+              </div>
+
+              <!-- Label Filter Dropdown -->
+              <div class="relative" ref="labelFilterRef">
+                <button @click="toggleLabelFilter" class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M6 6h.008v.008H6V6z" />
+                  </svg>
+                  Labels
+                  <span v-if="selectedLabels.length > 0" class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-blue-500 text-white">{{ selectedLabels.length }}</span>
+                </button>
+                <div v-if="showLabelFilter" class="absolute z-20 mt-2 w-96 origin-top-left bg-white rounded-lg shadow-xl ring-1 ring-black ring-opacity-5 p-5 animate-fadeIn">
+                  <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-base font-bold text-gray-900">Filter by Label</h3>
+                    <button @click="clearLabelFilter" v-if="selectedLabels.length > 0" class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline transition-colors">Clear All</button>
+                  </div>
+                  <div class="flex flex-wrap gap-2 max-h-64 overflow-y-auto">
+                    <button
+                      v-for="label in allLabels"
+                      :key="label.id"
+                      @click="toggleLabelSelection(label.name)"
+                      class="px-3 py-2 rounded-lg text-sm font-medium border-2 transition-all hover:shadow-md"
+                      :style="getLabelButtonStyle(label)"
+                    >
+                      {{ label.name }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Column Visibility Filter -->
+              <div class="relative" ref="columnFilterRef">
+                <button @click="toggleColumnFilter" class="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v13.5c0 .621.504 1.125 1.125 1.125z" />
+                  </svg>
+                  Columns
+                  <span v-if="hiddenColumns.length > 0" class="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-gray-500 text-white">{{ visibleColumns.length }}/{{ boardColumns.length }}</span>
+                </button>
+                <div v-if="showColumnFilter" class="absolute z-20 mt-2 w-72 origin-top-left bg-white rounded-lg shadow-xl ring-1 ring-black ring-opacity-5 p-5 animate-fadeIn">
+                  <div class="mb-4">
+                    <h3 class="text-base font-bold text-gray-900 mb-2">Toggle Columns</h3>
+                    <p class="text-xs text-gray-600">Select which columns to display on the board</p>
+                  </div>
+                  <div class="space-y-2 max-h-64 overflow-y-auto">
+                    <label
+                      v-for="column in boardColumns"
+                      :key="column.label.name"
+                      class="flex items-center gap-3 p-2 rounded-md hover:bg-gray-50 cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="isColumnVisible(column.label.name)"
+                        @change="toggleColumnVisibility(column.label.name)"
+                        class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <div class="flex items-center gap-2 flex-1">
+                        <span
+                          class="w-3 h-3 rounded-full"
+                          :style="{ backgroundColor: column.label.color }"
+                        ></span>
+                        <span class="text-sm font-medium text-gray-700">{{ column.label.name }}</span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <!-- Refresh Button -->
+              <button @click="manualRefresh" class="inline-flex items-center gap-2 p-2.5 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all shadow-sm" title="Refresh data">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.667 0l3.181-3.183m-4.991-11.666a8.25 8.25 0 00-11.667 0l-3.181 3.183" />
+                </svg>
+              </button>
+
+              <!-- Settings Button -->
+              <button @click="openConfigModal" class="inline-flex items-center gap-2 p-2.5 rounded-lg bg-white border border-gray-300 hover:bg-gray-50 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all shadow-sm" title="Settings">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-1.163l.043-.02a8.916 8.916 0 011.913-.38c.543-.053 1.097-.053 1.64 0a8.94 8.94 0 011.913.38l.043.02c.55.223 1.02.62 1.11 1.163.09.542.56.94 1.11 1.163l.043.02c.465.19.865.518 1.156.943.291.425.466.935.5 1.468.033.542.425 1.002.964 1.183.54.181.954.612 1.102 1.148.147.536.087 1.115-.165 1.61-.253.495-.677.862-1.183 1.024-.54.18-.93.64-.964 1.182a3.75 3.75 0 01-.5 1.468 3.75 3.75 0 01-1.156.943l-.043.02c-.55.223-1.02.62-1.11 1.163-.09.542-.56.94-1.11 1.163l-.043.02a8.916 8.916 0 01-1.913.38c-.543.053-1.097.053-1.64 0a8.94 8.94 0 01-1.913-.38l-.043-.02c-.55-.223-1.02-.62-1.11-1.163-.09-.542-.56-.94-1.11-1.163l-.043-.02a3.75 3.75 0 01-1.156-.943 3.75 3.75 0 01-.5-1.468c-.033-.542-.425-1.002-.964-1.183a2.25 2.25 0 01-1.102-1.148 2.25 2.25 0 01.165-1.61c.253-.495.677-.862 1.183-1.024.54-.18.93-.64.964-1.182.034-.533.209-1.043.5-1.468.291-.425.691-.753 1.156-.943l.043-.02c.55-.223 1.02-.62 1.11-1.163zM15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
+            </div>
           </div>
-        </template>
-      </draggable>
+        </div>
+      </div>
+
+      <!-- Board Section -->
+      <div class="flex gap-6 overflow-x-auto pb-6 px-6 pt-6">
+        <draggable
+          :list="visibleColumns"
+          group="columns"
+          item-key="label.name"
+          class="flex gap-6"
+          @end="onColumnDragEnd"
+        >
+          <template #item="{ element: column }">
+            <div
+              :data-column-name="column.label.name"
+              class="board-column bg-white rounded-xl w-80 flex-shrink-0 flex flex-col shadow-md border border-gray-200 hover:shadow-lg transition-shadow"
+            >
+              <div class="p-4 border-b border-gray-200 flex-shrink-0 bg-gradient-to-r from-gray-50 to-white rounded-t-xl">
+                <div class="flex items-center gap-2 cursor-move">
+                  <span class="w-3 h-3 rounded-full flex-shrink-0" :style="{ backgroundColor: column.label.color }"></span>
+                  <h2 class="font-bold text-base text-gray-800">{{ column.label.name }}</h2>
+                  <span class="ml-auto px-2.5 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold">{{ boardData[column.label.name] ? boardData[column.label.name].length : 0 }}</span>
+                </div>
+              </div>
+              <draggable
+                :list="boardData[column.label.name]"
+                group="issues"
+                item-key="id"
+                class="p-4 space-y-3 overflow-y-auto flex-grow min-h-[200px]"
+                @end="onDragEnd"
+              >
+                <template #item="{ element: issue }">
+                  <div :data-issue-id="issue.id" class="bg-white p-4 rounded-lg shadow-sm border-2 border-gray-200 hover:border-blue-400 hover:shadow-md cursor-move transition-all">
+                    <a :href="issue.web_url" target="_blank" rel="noopener noreferrer" class="font-semibold text-gray-900 hover:text-blue-600 hover:underline block mb-2" :style="{ fontSize: `${issueTitleFontSize}px` }">
+                      {{ issue.title }}
+                    </a>
+                    <div class="flex flex-wrap gap-1.5 mb-3">
+                      <span
+                        v-for="label in issue.labels"
+                        :key="label.id"
+                        :style="{ backgroundColor: label.color, color: getTextColor(label.color) }"
+                        class="px-2 py-1 text-xs font-semibold rounded-md"
+                      >
+                        {{ label.name }}
+                      </span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                      <span class="text-gray-500 font-medium">#{{ issue.iid }}</span>
+                      <div class="flex items-center gap-1.5">
+                        <span v-if="issue.milestone" class="px-2 py-1 bg-gray-100 text-gray-700 rounded-md font-semibold">
+                          {{ issue.milestone.title }}
+                        </span>
+                        <span
+                          :style="{ backgroundColor: getProjectColor(issue.project_id), color: getTextColor(getProjectColor(issue.project_id)) }"
+                          class="px-2 py-1 rounded-md font-semibold"
+                        >
+                          {{ issue.project_name }}
+                        </span>
+                        <img
+                          v-if="issue.assignees && issue.assignees.length > 0"
+                          :src="issue.assignees[0].avatar_url"
+                          alt="Assignee Avatar"
+                          class="w-6 h-6 rounded-full border-2 border-white shadow-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </template>
+              </draggable>
+            </div>
+          </template>
+        </draggable>
+      </div>
     </div>
 
     <!-- Configuration Modal -->
@@ -649,8 +758,31 @@ const onDragEnd = async (event) => {
 
 .loading-subtext {
   margin-top: 20px;
-  color: #4b5563; /* text-gray-600 */
+  color: #4b5563;
   font-size: 1.125rem;
   font-weight: 500;
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.board-column {
+  min-width: 320px;
+}
+
+.board-column:hover .cursor-move {
+  opacity: 0.8;
 }
 </style>
